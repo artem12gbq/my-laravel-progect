@@ -9,11 +9,10 @@ pipeline {
 
     stages {
         stage('Checkout Code') {
-            steps {
-                git branch: 'main', 
-                url: 'https://github.com/your_username/your_laravel_app.git'
-                credentialsId: 'your-git-credentials'
-            }
+        steps {
+        git branch: 'main', url: 'https://github.com/artem12gbq/my-laravel-progect.git'
+    }
+        }
         }
 
         stage('Setup Environment') {
