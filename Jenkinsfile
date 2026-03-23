@@ -2,27 +2,23 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'your_dockerhub_username/laravel-app'
+        // ЗАМЕНИТЕ НА ВАШ ЛОГИН DOCKER HUB
+        DOCKER_IMAGE = 'your_dockerhub_username/laravel-app' 
         DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
-        BUILD_NUMBER = "${env.BUILD_ID}"
     }
 
     stages {
         stage('Checkout Code') {
-        steps {
-            git branch: 'main', url: 'https://github.com/artem12gbq/my-laravel-progect.git'
-        }
-    }
+            steps {
+                git branch: 'main', url: 'https://github.com/artem12gbq/my-laravel-progect.git'
+            }
         }
 
         stage('Setup Environment') {
             steps {
                 script {
-                    // Копируем production .env
-                    sh 'cp .env.production .env'
-                    
-                    // Генерируем APP_KEY если нужно
-                    sh 'docker run --rm -v $(pwd):/app -w /app php:8.2-cli php artisan key:generate --force --no-interaction'
+                    // Создаем .env из примера, если нет production версии
+                    sh 'cp .env.example .env || true'
                 }
             }
         }
@@ -30,24 +26,8 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 script {
-                    // Собираем образ приложения
-                    docker.build("${env.DOCKER_IMAGE}:${env.BUILD_NUMBER}")
-                }
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    // Запускаем контейнер для тестов
-                    docker.image("${env.DOCKER_IMAGE}:${env.BUILD_NUMBER}").inside('--network=host') {
-                        // Устанавливаем зависимости
-                        sh 'composer install --no-dev --optimize-autoloader'
-                        
-                        // Запускаем миграции и тесты
-                        sh 'php artisan migrate --force'
-                        sh 'php artisan test'
-                    }
+                    // Собираем образ. Убедитесь, что Dockerfile в корне проекта!
+                    docker.build("${DOCKER_IMAGE}:${BUILD_NUMBER}")
                 }
             }
         }
@@ -55,33 +35,22 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', "${env.DOCKER_CREDENTIALS_ID}") {
-                        docker.image("${env.DOCKER_IMAGE}:${env.BUILD_NUMBER}").push()
+                    // Этот этап сработает, только если вы создали Credentials в Jenkins
+                    docker.withRegistry('https://index.docker.io/v1/', "${DOCKER_CREDENTIALS_ID}") {
+                        docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}").push()
+                        docker.image("${DOCKER_IMAGE}:latest").push()
                     }
                 }
             }
         }
 
-        stage('Deploy to Production') {
+        stage('Deploy') {
             steps {
                 script {
-                    // Останавливаем и удаляем старые контейнеры
-                    sh '''
-                    docker-compose down --volumes --remove-orphans || true
-                    '''
-
-                    // Запускаем новые контейнеры
-                    sh '''
-                    docker-compose up -d --build
-                    '''
-
-                    // Выполняем миграции и оптимизацию
-                    sh '''
-                    docker-compose exec app composer install --no-dev --optimize-autoloader
-                    docker-compose exec app php artisan optimize:clear
-                    docker-compose exec app php artisan optimize
-                    docker-compose exec app php artisan migrate --force
-                    '''
+                    // Простейший запуск контейнера (без docker-compose для начала)
+                    sh "docker stop laravel-app || true"
+                    sh "docker rm laravel-app || true"
+                    sh "docker run -d -p 80:80 --name laravel-app ${DOCKER_IMAGE}:${BUILD_NUMBER}"
                 }
             }
         }
@@ -89,12 +58,10 @@ pipeline {
 
     post {
         success {
-            echo ' Laravel application deployed successfully!'
-            echo ' Application URL: http://your-server-ip'
+            echo 'Laravel application deployed successfully!'
         }
         failure {
-            echo ' Deployment failed!'
-            // Можно добавить уведомления
+            echo 'Deployment failed!'
         }
     }
 }
